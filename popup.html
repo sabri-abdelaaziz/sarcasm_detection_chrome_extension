@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X Sarcasm Detector</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 350px;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #fff;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            color: #1da1f2;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 12px;
+            color: #657786;
+        }
+
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f7f9fa;
+            border-radius: 8px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #14171a;
+        }
+
+        .toggle-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .toggle-label {
+            font-size: 13px;
+            color: #14171a;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background: #ccc;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .toggle-switch.active {
+            background: #1da1f2;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: white;
+            top: 3px;
+            left: 3px;
+            transition: left 0.3s;
+        }
+
+        .toggle-switch.active::after {
+            left: 23px;
+        }
+
+        .input-group {
+            margin-bottom: 12px;
+        }
+
+        .input-label {
+            display: block;
+            font-size: 12px;
+            color: #657786;
+            margin-bottom: 6px;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #1da1f2;
+        }
+
+        .mode-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .mode-button {
+            padding: 10px;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-size: 12px;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .mode-button.active {
+            background: #1da1f2;
+            color: white;
+            border-color: #1da1f2;
+        }
+
+        .mode-button:hover {
+            background: #e8f5fe;
+        }
+
+        .mode-button.active:hover {
+            background: #1a91da;
+        }
+
+        .config-group {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #e1e8ed;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            text-align: center;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .footer {
+            text-align: center;
+            font-size: 11px;
+            color: #657786;
+            margin-top: 15px;
+        }
+
+        .help-text {
+            font-size: 11px;
+            color: #657786;
+            margin-top: 4px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>😏 Sarcasm Detector</h1>
+        <p>Detect sarcasm in X tweets</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Extension Status</div>
+        <div class="toggle-container">
+            <span class="toggle-label">Enable Detection</span>
+            <div class="toggle-switch active" id="enableToggle"></div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Detection Mode</div>
+        <div class="mode-selector">
+            <div class="mode-button active" id="staticMode" data-mode="static">
+                🧪 Static (Test)
+            </div>
+            <div class="mode-button" id="jsModelMode" data-mode="js-model">
+                🤖 JavaScript Model
+            </div>
+            <div class="mode-button" id="apiMode" data-mode="api">
+                🌐 External API
+            </div>
+        </div>
+
+        <!-- JS Model Configuration -->
+        <div class="config-group" id="jsModelConfig" style="display: none;">
+            <label class="input-label">Model File Path</label>
+            <input type="text" class="input-field" id="jsModelPath" placeholder="model.js">
+            <div class="help-text">Path to your JavaScript model file (relative to extension root)</div>
+        </div>
+
+        <!-- API Configuration -->
+        <div class="config-group" id="apiConfig" style="display: none;">
+            <label class="input-label">API Endpoint URL</label>
+            <input type="text" class="input-field" id="apiUrl" placeholder="http://localhost:5000/detect-sarcasm">
+            <div class="help-text">Flask API URL (default: http://localhost:5000/detect-sarcasm)</div>
+        </div>
+
+        <div id="statusMessage"></div>
+    </div>
+
+    <div class="footer">
+        Version 1.0.0
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

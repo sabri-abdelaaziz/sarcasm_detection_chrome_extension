@@ -1,0 +1,118 @@
+/**
+ * Example JavaScript Model for Sarcasm Detection
+ * 
+ * This is a template file. Copy this to model.js and implement your actual model.
+ * 
+ * Your model function should:
+ * 1. Accept a string (tweet text) as input
+ * 2. Return an object with:
+ *    - isSarcasm: boolean
+ *    - confidence: number (0.0 to 1.0)
+ * 
+ * You can use:
+ * - TensorFlow.js for ML models
+ * - ONNX Runtime for ONNX models
+ * - Any other JavaScript ML library
+ * - Or your own custom logic
+ */
+
+// Example 1: Simple keyword-based model
+window.detectSarcasmModel = function(text) {
+    const sarcasmKeywords = [
+        'sure', 'obviously', 'totally', 'definitely', 'yeah right',
+        'as if', 'whatever', 'great', 'wonderful', 'perfect',
+        'love it', 'amazing', 'brilliant', 'genius', 'fantastic'
+    ];
+    
+    const lowerText = text.toLowerCase();
+    const keywordCount = sarcasmKeywords.filter(kw => lowerText.includes(kw)).length;
+    const hasExclamation = (text.match(/!/g) || []).length > 1;
+    const hasQuestion = text.includes('?');
+    
+    // Simple scoring
+    let score = 0;
+    if (keywordCount > 0) score += 0.3;
+    if (keywordCount > 1) score += 0.2;
+    if (hasExclamation) score += 0.2;
+    if (hasQuestion && keywordCount > 0) score += 0.1;
+    
+    const isSarcasm = score > 0.4;
+    const confidence = Math.min(score + 0.3, 0.95);
+    
+    return {
+        isSarcasm: isSarcasm,
+        confidence: confidence
+    };
+};
+
+// Example 2: Using TensorFlow.js (uncomment and install tfjs)
+/*
+// First, add TensorFlow.js to your extension
+// In manifest.json, add to web_accessible_resources:
+// "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"
+
+window.detectSarcasmModel = async function(text) {
+    // Load your trained model
+    const model = await tf.loadLayersModel('path/to/your/model.json');
+    
+    // Preprocess text (tokenize, vectorize, etc.)
+    const processed = preprocessText(text);
+    
+    // Make prediction
+    const prediction = model.predict(processed);
+    const result = await prediction.data();
+    
+    return {
+        isSarcasm: result[0] > 0.5,
+        confidence: Math.abs(result[0] - 0.5) * 2 // Convert to 0-1 range
+    };
+};
+*/
+
+// Example 3: Using ONNX Runtime (uncomment and install onnxruntime-web)
+/*
+// Add ONNX Runtime to your extension
+// In manifest.json, add to web_accessible_resources:
+// "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"
+
+window.detectSarcasmModel = async function(text) {
+    const session = await ort.InferenceSession.create('path/to/your/model.onnx');
+    
+    // Preprocess text
+    const input = preprocessText(text);
+    
+    // Run inference
+    const results = await session.run(input);
+    const output = results.output.data;
+    
+    return {
+        isSarcasm: output[0] > 0.5,
+        confidence: Math.abs(output[0] - 0.5) * 2
+    };
+};
+*/
+
+// Example 4: Call external API from model file (if needed)
+/*
+window.detectSarcasmModel = async function(text) {
+    try {
+        const response = await fetch('https://your-api.com/detect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text })
+        });
+        const data = await response.json();
+        return {
+            isSarcasm: data.is_sarcasm,
+            confidence: data.confidence
+        };
+    } catch (error) {
+        console.error('Model API error:', error);
+        return {
+            isSarcasm: false,
+            confidence: 0.5
+        };
+    }
+};
+*/
+
