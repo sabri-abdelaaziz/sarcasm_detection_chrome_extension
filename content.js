@@ -1,208 +1,284 @@
 // X Sarcasm Detector - Content Script
-// Supports: Static mode, JavaScript model, or External API
+// Uses ONNX model for sarcasm detection
 
 (function() {
     'use strict';
 
     // Configuration
     const CONFIG = {
-        enabled: true,
-        mode: 'api', // 'static', 'js-model', or 'api' - Default to API mode
-        apiUrl: 'http://localhost:5000/detect-sarcasm', // Flask API URL
-        jsModelPath: 'model.js' // Path to your JS model file
+        enabled: true
     };
 
     // Load saved settings
-    chrome.storage.sync.get(['enabled', 'mode', 'apiUrl', 'jsModelPath'], (result) => {
+    chrome.storage.sync.get(['enabled'], (result) => {
         if (result.enabled !== undefined) CONFIG.enabled = result.enabled;
-        if (result.mode) CONFIG.mode = result.mode;
-        if (result.apiUrl) CONFIG.apiUrl = result.apiUrl;
-        else if (!CONFIG.apiUrl) CONFIG.apiUrl = 'http://localhost:5000/detect-sarcasm'; // Default Flask URL
-        if (result.jsModelPath) CONFIG.jsModelPath = result.jsModelPath;
-        
         console.log('[Sarcasm Detector] Configuration loaded:', CONFIG);
     });
 
-    // Static sarcasm detection (for testing)
-    function detectSarcasmStatic(tweetText) {
-        const sarcasmKeywords = [
-            'sure', 'obviously', 'totally', 'definitely', 'yeah right',
-            'as if', 'whatever', 'great', 'wonderful', 'perfect',
-            'love it', 'amazing', 'brilliant', 'genius'
-        ];
-        
-        const lowerText = tweetText.toLowerCase();
-        const hasKeywords = sarcasmKeywords.some(keyword => lowerText.includes(keyword));
-        
-        return {
-            isSarcasm: Math.random() > 0.5 || hasKeywords,
-            confidence: Math.random() * 0.3 + 0.7,
-            method: 'static'
-        };
-    }
-
-    // JavaScript Model detection (load your model from a JS file)
+    // JavaScript Model detection (ONNX model loaded via manifest)
     let jsModel = null;
+    let modelInitialized = false;
     
     async function loadJSModel() {
-        if (jsModel !== null) return jsModel;
+        // Check if model is already available (loaded via manifest)
+        if (typeof window.detectSarcasmModel === 'function') {
+            if (!jsModel) {
+                jsModel = window.detectSarcasmModel;
+                console.log('[Sarcasm Detector] ✓ Model function found');
+                
+                // Set model URL if needed
+                if (typeof window.setModelUrl === 'function' && !modelInitialized) {
+                    const modelUrl = chrome.runtime.getURL('model.onnx');
+                    console.log('[Sarcasm Detector] Setting model URL:', modelUrl);
+                    window.setModelUrl(modelUrl);
+                    modelInitialized = true;
+                }
+            }
+            return jsModel;
+        }
         
-        try {
-            // Load the model script dynamically
-            const script = document.createElement('script');
-            script.src = chrome.runtime.getURL(CONFIG.jsModelPath);
-            document.head.appendChild(script);
+        // Wait for model to be loaded (should happen quickly since it's in manifest)
+        console.log('[Sarcasm Detector] Waiting for model to load...');
+        let attempts = 0;
+        while (typeof window.detectSarcasmModel !== 'function' && attempts < 50) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+            if (attempts % 10 === 0) {
+                console.log(`[Sarcasm Detector] Still waiting... attempt ${attempts}/50`);
+            }
+        }
+        
+        if (typeof window.detectSarcasmModel === 'function') {
+            jsModel = window.detectSarcasmModel;
+            console.log('[Sarcasm Detector] ✓ Model loaded successfully!');
             
-            return new Promise((resolve, reject) => {
-                script.onload = () => {
-                    // Check if model function is available
-                    if (typeof window.detectSarcasmModel === 'function') {
-                        jsModel = window.detectSarcasmModel;
-                        resolve(jsModel);
-                    } else {
-                        reject(new Error('Model function not found. Expected window.detectSarcasmModel'));
-                    }
-                };
-                script.onerror = () => reject(new Error('Failed to load model script'));
-            });
-        } catch (error) {
-            console.error('Error loading JS model:', error);
-            throw error;
+            // Set model URL
+            if (typeof window.setModelUrl === 'function' && !modelInitialized) {
+                const modelUrl = chrome.runtime.getURL('model.onnx');
+                console.log('[Sarcasm Detector] Setting model URL:', modelUrl);
+                window.setModelUrl(modelUrl);
+                modelInitialized = true;
+            }
+            
+            return jsModel;
+        }
+        
+        console.error('[Sarcasm Detector] ✗ Model not found after waiting');
+        return null;
+    }
+
+    // Language detection function - checks if text is primarily English
+    function isEnglish(text) {
+        // Remove URLs, mentions, hashtags, emojis for better detection
+        const cleanText = text.replace(/https?:\/\/\S+/g, '')
+                              .replace(/@\w+/g, '')
+                              .replace(/#\w+/g, '')
+                              .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Remove emojis
+                              .trim();
+        
+        if (cleanText.length < 5) return true; // Too short to determine reliably, allow it
+        
+        // Check what percentage is non-Latin scripts (Arabic, Chinese, Japanese, Korean, Cyrillic, Greek, Hebrew, Thai, etc.)
+        const nonLatinChars = (cleanText.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\u0400-\u04FF\u0370-\u03FF\u0590-\u05FF\u0E00-\u0E7F]/g) || []).length;
+        const totalChars = cleanText.replace(/\s/g, '').length;
+        
+        if (totalChars > 0 && nonLatinChars / totalChars > 0.3) {
+            console.log('[Language] >30% non-Latin characters detected');
+            return false;
+        }
+        
+        // Clean for word analysis
+        const wordText = cleanText.replace(/[^\w\s]/g, ' ').trim();
+        const words = wordText.split(/\s+/).filter(w => w.length > 0);
+        const wordCount = words.length;
+        
+        if (wordCount === 0) return false;
+        
+        // Check for French-specific words and patterns
+        const frenchIndicators = [
+            /\b(le|la|les|un|une|des|du|de|dans|sur|avec|sans|pour|par|chez|vers|contre)\b/i,
+            /\b(je|tu|il|elle|nous|vous|ils|elles|mon|ma|mes|ton|ta|tes|son|sa|ses)\b/i,
+            /\b(très|beaucoup|aussi|plus|moins|bien|mal|tout|tous|toute|toutes|même|autre)\b/i,
+            /\b(qui|que|quoi|dont|où|comment|pourquoi|quand|quel|quelle)\b/i,
+            /\b(est|sont|était|étaient|sera|seront|avoir|été|faire|dit)\b/i
+        ];
+        
+        let frenchScore = 0;
+        frenchIndicators.forEach(pattern => {
+            const matches = wordText.match(pattern);
+            if (matches) frenchScore += matches.length;
+        });
+        
+        if (frenchScore >= 3) {
+            console.log('[Language] French detected (score:', frenchScore, ')');
+            return false;
+        }
+        
+        // Check for Spanish-specific words
+        const spanishIndicators = [
+            /\b(el|la|los|las|un|una|unos|unas|del|en|con|por|para|como|pero|muy|más|menos)\b/i,
+            /\b(yo|tú|él|ella|nosotros|vosotros|ellos|ellas|mi|tu|su|está|están|hay|qué)\b/i,
+            /\b(ser|estar|hacer|poder|decir|ir|ver|dar|saber|querer|llegar|pasar)\b/i
+        ];
+        
+        let spanishScore = 0;
+        spanishIndicators.forEach(pattern => {
+            const matches = wordText.match(pattern);
+            if (matches) spanishScore += matches.length;
+        });
+        
+        if (spanishScore >= 3) {
+            console.log('[Language] Spanish detected (score:', spanishScore, ')');
+            return false;
+        }
+        
+        // Common English words - expanded list
+        const englishIndicators = [
+            // Articles, pronouns, basic verbs
+            /\b(the|a|an|this|that|these|those)\b/i,
+            /\b(i|you|he|she|it|we|they|me|him|her|us|them|my|your|his|her|its|our|their)\b/i,
+            /\b(is|are|am|was|were|be|being|been|have|has|had|having)\b/i,
+            /\b(do|does|did|doing|done|will|would|shall|should|can|could|may|might|must)\b/i,
+            
+            // Common verbs
+            /\b(get|got|getting|make|take|go|come|see|look|want|need|know|think|feel)\b/i,
+            /\b(say|said|tell|ask|work|seem|try|use|find|give|put|mean|keep|let|begin)\b/i,
+            /\b(help|show|hear|play|run|move|live|believe|bring|happen|write|sit|stand|lose|pay)\b/i,
+            
+            // Conjunctions and prepositions
+            /\b(and|or|but|if|when|where|what|who|how|why|which|because|while|since|until|unless)\b/i,
+            /\b(in|on|at|to|for|with|from|by|about|as|into|like|through|after|over|between|under)\b/i,
+            /\b(out|up|down|off|above|below|near|during|before|without|against|among|towards)\b/i,
+            
+            // Common adjectives and adverbs
+            /\b(not|no|yes|all|any|some|every|each|many|much|more|most|less|little|few|other|another)\b/i,
+            /\b(new|old|good|bad|great|big|small|long|short|high|low|early|late|last|next|first)\b/i,
+            /\b(very|so|too|just|only|also|even|still|now|then|here|there|always|never|often)\b/i,
+            
+            // Question words and common expressions
+            /\b(who's|what's|where's|when's|why's|how's|there's|here's|it's|that's|i'm|you're)\b/i,
+            /\b(going to|have to|want to|need to|used to|able to|about to|got to)\b/i
+        ];
+        
+        // Count English indicators
+        let englishScore = 0;
+        englishIndicators.forEach(pattern => {
+            const matches = wordText.match(pattern);
+            if (matches) englishScore += matches.length;
+        });
+        
+        const englishRatio = englishScore / wordCount;
+        
+        // Debug log
+        console.log('[Language] Words:', wordCount, 'English:', englishScore, 'Ratio:', (englishRatio * 100).toFixed(1) + '%', 'French:', frenchScore, 'Spanish:', spanishScore);
+        
+        // Stricter thresholds for better accuracy
+        if (wordCount <= 5) {
+            // Short texts: need at least 2 English words
+            return englishScore >= 2;
+        } else if (wordCount <= 10) {
+            // Medium texts: need at least 30% English words
+            return englishRatio >= 0.3 || englishScore >= 3;
+        } else {
+            // Longer texts: need at least 25% English words
+            return englishRatio >= 0.25 || englishScore >= 5;
         }
     }
 
     async function detectSarcasmJSModel(tweetText) {
         try {
-            const model = await loadJSModel();
-            const result = await Promise.resolve(model(tweetText)); // Handle both sync and async
+            // Language check - model trained only for English
+            if (!isEnglish(tweetText)) {
+                console.log('[Sarcasm Detector] Text is not in English, skipping detection');
+                return null;
+            }
             
-            // Ensure result has correct format
-            return {
-                isSarcasm: Boolean(result.isSarcasm || result.sarcasm || result.prediction),
-                confidence: parseFloat(result.confidence || result.score || 0.5),
-                method: 'js-model'
-            };
-        } catch (error) {
-            console.error('JS Model error:', error);
-            // Fallback to static
-            return detectSarcasmStatic(tweetText);
-        }
-    }
-
-    // External API detection - Sends request to Flask API and receives response
-    // Returns null if API is not available (no fallback)
-    async function detectSarcasmAPI(tweetText) {
-        if (!CONFIG.apiUrl) {
-            console.error('[Sarcasm Detector] API URL not configured');
-            return null; // Return null instead of fallback
-        }
-
-        try {
-            console.log('[Sarcasm Detector] Sending request to Flask API:', CONFIG.apiUrl);
-            console.log('[Sarcasm Detector] Request payload:', { text: tweetText.substring(0, 50) + '...' });
-
-            // Create timeout controller for request
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-
-            const response = await fetch(CONFIG.apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    text: tweetText
-                }),
-                signal: controller.signal
-            });
-
-            clearTimeout(timeoutId);
-
-            console.log('[Sarcasm Detector] Response status:', response.status);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('[Sarcasm Detector] API returned error:', response.status, errorText);
-                return null; // Return null instead of fallback
+            // Pre-filter: Skip obviously non-sarcastic content
+            const lowerText = tweetText.toLowerCase();
+            
+            // Skip questions about sports/news (likely neutral/informative)
+            const neutralPatterns = [
+                /who('s| is| will|se)?\s+(been|join|your|the|man|player)/i,
+                /what('s| is)?\s+(your|the|next|happening)/i,
+                /when('s| is| will)/i,
+                /where('s| is)/i,
+                /\b(score|match|game|championship|winner|result)\b/i,
+                /\b(announced|confirmed|official|breaking|update)\b/i
+            ];
+            
+            if (neutralPatterns.some(pattern => pattern.test(tweetText))) {
+                console.log('[Sarcasm Detector] Neutral/informative pattern detected, skipping');
+                return null;
             }
-
-            const data = await response.json();
-            console.log('[Sarcasm Detector] Received response from Flask:', data);
-
-            // Handle Flask API response format
-            const result = {
-                isSarcasm: Boolean(data.is_sarcasm || data.sarcasm || data.isSarcasm || data.prediction),
-                confidence: parseFloat(data.confidence || data.score || 0.5),
-                method: 'api'
-            };
-
-            console.log('[Sarcasm Detector] Processed result:', result);
-            return result;
-
-        } catch (error) {
-            // Check if it's a network error (server not running)
-            if (error.name === 'TypeError' || error.name === 'AbortError' || error.message.includes('Failed to fetch')) {
-                console.error('[Sarcasm Detector] Flask API server is not running or unreachable');
-                console.error('[Sarcasm Detector] Error details:', error.message);
-            } else {
-                console.error('[Sarcasm Detector] API error:', error);
+            
+            // Skip tweets with sports emojis (likely factual)
+            if (/[🏆⚽🏀🎾⚾🏐🏈🥅]/.test(tweetText)) {
+                console.log('[Sarcasm Detector] Sports emoji detected, likely factual');
+                return null;
             }
-            // Return null - no badge will be shown
-            return null;
-        }
-    }
-
-    // Main detection function
-    async function detectSarcasm(tweetText) {
-        if (!CONFIG.enabled || !tweetText || tweetText.trim().length === 0) {
-            return null;
-        }
-
-        switch (CONFIG.mode) {
-            case 'js-model':
-                return await detectSarcasmJSModel(tweetText);
-            case 'api':
-                if (!CONFIG.apiUrl) {
-                    console.error('[Sarcasm Detector] API URL not configured');
-                    return null; // Return null instead of fallback
+            
+            const model = await loadJSModel();
+            
+            if (!model) {
+                console.warn('[Sarcasm Detector] Model not available');
+                return null;
+            }
+            
+            const result = await Promise.resolve(model(tweetText));
+            
+            if (!result || !result.probabilities) {
+                console.warn('[Sarcasm Detector] Model returned no result');
+                return null;
+            }
+            
+            // Use probabilities for better accuracy
+            const probs = result.probabilities;
+            const maxProb = Math.max(probs.nonSarcasm, probs.sarcasm, probs.neutral);
+            
+            // Anti-false-positive: sarcasm needs VERY high confidence
+            const isSarcasmPredicted = probs.sarcasm === maxProb;
+            const minConfidence = isSarcasmPredicted ? 0.85 : 0.65; // 85% for sarcasm!
+            
+            // Only show badge if confidence meets threshold
+            if (maxProb < minConfidence) {
+                console.log('[Sarcasm Detector] Confidence too low:', (maxProb * 100).toFixed(1) + '%');
+                return null;
+            }
+            
+            // Strict check: sarcasm must be MUCH higher than non-sarcasm
+            if (isSarcasmPredicted) {
+                const gap = probs.sarcasm - probs.nonSarcasm;
+                if (gap < 0.25) { // 25% minimum gap!
+                    console.log('[Sarcasm Detector] Sarcasm gap too small:', (gap * 100).toFixed(1) + '%');
+                    return null;
                 }
-                return await detectSarcasmAPI(tweetText);
-            case 'static':
-            default:
-                return detectSarcasmStatic(tweetText);
+                
+                // Also check if sarcasm is not just slightly higher than neutral
+                if (probs.sarcasm - probs.neutral < 0.20) {
+                    console.log('[Sarcasm Detector] Sarcasm vs neutral too close');
+                    return null;
+                }
+            }
+            
+            return {
+                isSarcasm: probs.sarcasm === maxProb,
+                isNeutral: probs.neutral === maxProb,
+                confidence: maxProb,
+                probabilities: probs,
+                method: 'onnx-model'
+            };
+        } catch (error) {
+            console.error('[Sarcasm Detector] JS Model error:', error);
+            return null;
         }
     }
 
-    // Create sarcasm indicator badge
-    function createSarcasmBadge(result) {
-        const badge = document.createElement('div');
-        badge.className = 'sarcasm-badge';
-        
-        if (result.isSarcasm) {
-            badge.classList.add('sarcasm-detected');
-            badge.innerHTML = `
-                <span class="sarcasm-icon">😏</span>
-                <span class="sarcasm-text">Sarcasm Detected</span>
-                <span class="sarcasm-confidence">${Math.round(result.confidence * 100)}%</span>
-            `;
-        } else {
-            badge.classList.add('sarcasm-not-detected');
-            badge.innerHTML = `
-                <span class="sarcasm-icon">😊</span>
-                <span class="sarcasm-text">Not Sarcasm</span>
-                <span class="sarcasm-confidence">${Math.round(result.confidence * 100)}%</span>
-            `;
-        }
-
-        return badge;
-    }
-
-    // Process a single tweet
     async function processTweet(tweetElement) {
-        // Skip if already processed
-        if (tweetElement.dataset.sarcasmProcessed === 'true') {
+        // Check if already processed
+        if (tweetElement.hasAttribute('data-sarcasm-processed')) {
             return;
         }
+        tweetElement.setAttribute('data-sarcasm-processed', 'true');
 
         // Find tweet text
         const tweetTextElement = tweetElement.querySelector('[data-testid="tweetText"]');
@@ -210,125 +286,154 @@
             return;
         }
 
-        const tweetText = tweetTextElement.innerText || tweetTextElement.textContent;
-        if (!tweetText || tweetText.trim().length === 0) {
-            return;
+        const tweetText = tweetTextElement.innerText;
+        if (!tweetText || tweetText.trim().length < 5) {
+            return; // Skip very short tweets
         }
-
-        // Mark as processed
-        tweetElement.dataset.sarcasmProcessed = 'true';
 
         // Detect sarcasm
-        const result = await detectSarcasm(tweetText);
+        const result = await detectSarcasmJSModel(tweetText);
+        
         if (!result) {
-            // No result means API is not available - don't show anything
-            console.log('[Sarcasm Detector] No result - API server may not be running');
             return;
         }
 
-        // Remove existing badge if any
-        const existingBadge = tweetElement.querySelector('.sarcasm-badge');
-        if (existingBadge) {
-            existingBadge.remove();
+        // Add colored border to tweet
+        let borderColor, backgroundColor;
+        if (result.isNeutral) {
+            borderColor = 'rgba(158, 158, 158, 0.5)';
+            backgroundColor = 'rgba(158, 158, 158, 0.05)';
+        } else if (result.isSarcasm) {
+            borderColor = 'rgba(255, 152, 0, 0.6)';
+            backgroundColor = 'rgba(255, 193, 7, 0.08)';
+        } else {
+            borderColor = 'rgba(76, 175, 80, 0.6)';
+            backgroundColor = 'rgba(76, 175, 80, 0.08)';
         }
-
-        // Create and insert badge
-        const badge = createSarcasmBadge(result);
         
-        // Find a good place to insert the badge (usually after the tweet text)
-        const tweetTextContainer = tweetTextElement.closest('div[dir="auto"]') || tweetTextElement.parentElement;
-        if (tweetTextContainer) {
-            tweetTextContainer.appendChild(badge);
+        tweetElement.style.borderLeft = `4px solid ${borderColor}`;
+        tweetElement.style.backgroundColor = backgroundColor;
+        tweetElement.style.transition = 'all 0.3s ease';
+
+        // Create badge
+        const badge = document.createElement('div');
+        
+        if (result.isNeutral) {
+            badge.className = 'sarcasm-badge sarcasm-neutral';
+            badge.innerHTML = `<span class="sarcasm-icon">🤔</span><span class="sarcasm-text">Neutre</span>`;
+        } else if (result.isSarcasm) {
+            badge.className = 'sarcasm-badge sarcasm-detected';
+            badge.innerHTML = `<span class="sarcasm-icon">😏</span><span class="sarcasm-text">Sarcasme</span>`;
         } else {
-            tweetElement.insertBefore(badge, tweetElement.firstChild);
+            badge.className = 'sarcasm-badge sarcasm-not-detected';
+            badge.innerHTML = `<span class="sarcasm-icon">✓</span><span class="sarcasm-text">Not Sarcasm</span>`;
+        }
+
+        // Insert badge
+        const tweetContainer = tweetElement.querySelector('[data-testid="tweetText"]').closest('div[data-testid="tweetText"]').parentElement;
+        if (tweetContainer) {
+            tweetContainer.appendChild(badge);
         }
     }
 
-    // Find and process all tweets on the page
+    let processingQueue = [];
+    let isProcessing = false;
+    
+    async function processQueue() {
+        if (isProcessing || processingQueue.length === 0) return;
+        
+        isProcessing = true;
+        const tweet = processingQueue.shift();
+        
+        try {
+            await processTweet(tweet);
+        } catch (err) {
+            console.error('[Sarcasm Detector] Error processing tweet:', err);
+        }
+        
+        // Small delay between tweets to avoid blocking
+        await new Promise(resolve => setTimeout(resolve, 50));
+        isProcessing = false;
+        
+        // Process next
+        if (processingQueue.length > 0) {
+            processQueue();
+        }
+    }
+
     function processAllTweets() {
-        const tweets = document.querySelectorAll('article[data-testid="tweet"]');
-        tweets.forEach(tweet => {
-            processTweet(tweet);
-        });
-    }
+        if (!CONFIG.enabled) {
+            return;
+        }
 
-    // Observer for dynamically loaded tweets
-    function setupObserver() {
-        const observer = new MutationObserver((mutations) => {
-            let shouldProcess = false;
-            
-            mutations.forEach((mutation) => {
-                if (mutation.addedNodes.length > 0) {
-                    mutation.addedNodes.forEach((node) => {
-                        if (node.nodeType === 1) { // Element node
-                            if (node.matches && node.matches('article[data-testid="tweet"]')) {
-                                shouldProcess = true;
-                            }
-                            if (node.querySelectorAll && node.querySelectorAll('article[data-testid="tweet"]').length > 0) {
-                                shouldProcess = true;
-                            }
-                        }
-                    });
-                }
-            });
-
-            if (shouldProcess) {
-                clearTimeout(window.sarcasmProcessTimeout);
-                window.sarcasmProcessTimeout = setTimeout(() => {
-                    processAllTweets();
-                }, 500);
+        const tweets = document.querySelectorAll('article[data-testid="tweet"]:not([data-sarcasm-processed])');
+        
+        // Limit to 10 tweets at a time to avoid lag
+        const tweetsArray = Array.from(tweets).slice(0, 10);
+        
+        tweetsArray.forEach(tweet => {
+            if (!processingQueue.includes(tweet)) {
+                processingQueue.push(tweet);
             }
         });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
+        
+        processQueue();
     }
 
-    // Initialize when page loads
-    function init() {
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                processAllTweets();
-                setupObserver();
-            });
-        } else {
-            processAllTweets();
-            setupObserver();
-        }
-    }
+    // Initial processing
+    setTimeout(() => {
+        console.log('[Sarcasm Detector] Starting initial tweet processing...');
+        processAllTweets();
+    }, 2000);
 
-    // Run initialization
-    init();
-
-    // Listen for messages from popup
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-        if (request.action === 'toggle') {
-            CONFIG.enabled = request.enabled;
-            if (CONFIG.enabled) {
+    // Watch for new tweets with debouncing
+    let debounceTimer;
+    const observer = new MutationObserver((mutations) => {
+        if (CONFIG.enabled) {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
                 processAllTweets();
-            } else {
-                document.querySelectorAll('.sarcasm-badge').forEach(badge => badge.remove());
-            }
-        }
-        if (request.action === 'setMode') {
-            CONFIG.mode = request.mode;
-            jsModel = null; // Reset model cache when switching modes
-            processAllTweets();
-        }
-        if (request.action === 'setApiUrl') {
-            CONFIG.apiUrl = request.apiUrl;
-        }
-        if (request.action === 'setJsModelPath') {
-            CONFIG.jsModelPath = request.jsModelPath;
-            jsModel = null; // Reset model cache
-        }
-        if (request.action === 'updateConfig') {
-            Object.assign(CONFIG, request.config);
-            jsModel = null;
-            processAllTweets();
+            }, 500); // Wait 500ms after last mutation
         }
     });
 
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    // Listen for toggle messages
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'toggleSarcasm') {
+            CONFIG.enabled = request.enabled;
+            console.log('[Sarcasm Detector] Detection', CONFIG.enabled ? 'enabled' : 'disabled');
+            
+            if (!CONFIG.enabled) {
+                // Remove all badges
+                document.querySelectorAll('.sarcasm-badge').forEach(badge => {
+                    badge.remove();
+                });
+                // Remove borders and backgrounds
+                document.querySelectorAll('[data-sarcasm-processed]').forEach(tweet => {
+                    tweet.removeAttribute('data-sarcasm-processed');
+                    tweet.style.borderLeft = '';
+                    tweet.style.backgroundColor = '';
+                });
+                // Clear queue
+                processingQueue = [];
+            } else {
+                // Re-process all tweets
+                processAllTweets();
+            }
+            
+            sendResponse({success: true});
+        }
+    });
+
+    console.log('[Sarcasm Detector] Content script loaded successfully!');
+    console.log('[Sarcasm Detector] Checking dependencies:', {
+        hasOrt: typeof window.ort !== 'undefined',
+        hasDetectFunction: typeof window.detectSarcasmModel !== 'undefined',
+        hasSetModelUrl: typeof window.setModelUrl !== 'undefined'
+    });
 })();

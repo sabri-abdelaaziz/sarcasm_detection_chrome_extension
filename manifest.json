@@ -18,19 +18,31 @@
         "https://twitter.com/*",
         "https://x.com/*"
       ],
-      "js": ["content.js"],
+      "js": ["ort.min.js", "vocab-loader.js", "model.js", "content.js"],
       "css": ["styles.css"],
       "run_at": "document_idle"
     }
   ],
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/icon.png",
+      "32": "images/icon.png"
+    }
+  },
+  "icons": {
+    "16": "images/icon.png",
+    "48": "images/icon.png",
+    "128": "images/icon.png"
   },
   "web_accessible_resources": [
     {
-      "resources": ["model.js", "*.js"],
+      "resources": ["model.js", "model.onnx", "ort.min.js", "vocab.txt", "vocab-loader.js", "*.wasm", "*.js"],
       "matches": ["https://twitter.com/*", "https://x.com/*"]
     }
-  ]
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
 }
 

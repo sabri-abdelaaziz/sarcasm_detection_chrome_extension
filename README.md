@@ -1,198 +1,189 @@
-# X Sarcasm Detector - Chrome Extension
+# ADIA-X Sarcasm Detector - Extension Chrome
 
-A Chrome extension that detects sarcasm in X (Twitter) tweets. Supports three modes: Static testing, JavaScript model, or External API.
+Extension Chrome intelligente qui détecte le sarcasme dans les tweets X (Twitter) en temps réel en utilisant un modèle de Machine Learning ONNX.
 
-## Features
+## 🎯 Description du Projet
 
-- 🔍 Automatically detects sarcasm in tweets on X.com and Twitter.com
-- 🎨 Visual indicators showing sarcasm detection results
-- ⚙️ Three detection modes:
-  - **Static Mode**: For testing (random results)
-  - **JavaScript Model**: Use your ML model directly in the browser
-  - **External API**: Connect to any API endpoint
-- 📊 Confidence scores displayed
-- 🔄 Real-time detection on dynamically loaded tweets
+Cette extension Chrome utilise un modèle de Machine Learning basé sur ONNX Runtime pour analyser automatiquement les tweets et détecter le sarcasme. L'extension s'intègre directement dans l'interface de X (Twitter) et affiche des badges visuels indiquant si un tweet est sarcastique ou non, avec un score de confiance.
 
-## Installation
+**Technologies utilisées :**
+- 🧠 ONNX Runtime Web pour l'inférence du modèle
+- 🎨 JavaScript/CSS pour l'intégration UI
+- 🔧 Chrome Extension Manifest V3
+- 📊 Modèle ML entraîné pour la détection de sarcasme
 
-1. **Download/Clone this extension folder**
+## ✨ Fonctionnalités
 
-2. **Create Extension Icons** (Optional)
-   - Create three icon files: `icon16.png`, `icon48.png`, and `icon128.png`
-   - Or remove the icon references from `manifest.json` temporarily
+- 🔍 Détection automatique du sarcasme dans les tweets sur X.com et Twitter.com
+- 🎨 Indicateurs visuels avec badges de couleur (orange pour sarcasme, vert pour non-sarcasme)
+- 📊 Affichage des scores de confiance du modèle
+- 🔄 Détection en temps réel sur les tweets chargés dynamiquement
+- ⚡ Traitement rapide grâce à ONNX Runtime Web
+- 🎯 Intégration transparente dans l'interface X/Twitter
 
-3. **Load the Extension in Chrome**
-   - Open Chrome and navigate to `chrome://extensions/`
-   - Enable "Developer mode" (toggle in top right)
-   - Click "Load unpacked"
-   - Select the extension folder
+## 📦 Installation
 
-4. **Test the Extension**
-   - Navigate to https://x.com or https://twitter.com
-   - The extension will automatically detect tweets and show sarcasm indicators
-   - Click the extension icon to open the popup and adjust settings
+### Prérequis
 
-## Detection Modes
+⚠️ **IMPORTANT** : Le fichier `model.onnx` n'est pas inclus dans ce dépôt en raison de sa taille. Vous devez ajouter votre propre modèle ONNX.
 
-### 1. Static Mode (Testing)
-- Uses random detection results for testing
-- No configuration needed
-- Perfect for testing the UI
+**Étapes d'installation :**
 
-### 2. JavaScript Model Mode
-Use your ML model directly in JavaScript.
-
-**Setup:**
-1. Create a `model.js` file in the extension root (see `model.js.example`)
-2. Implement a function: `window.detectSarcasmModel(text)`
-3. Return: `{ isSarcasm: boolean, confidence: number }`
-4. In the popup, select "JavaScript Model" mode
-5. Enter the model file path (default: `model.js`)
-
-**Example Model:**
-```javascript
-window.detectSarcasmModel = function(text) {
-    // Your model logic here
-    return {
-        isSarcasm: true,
-        confidence: 0.85
-    };
-};
-```
-
-**Supported Libraries:**
-- TensorFlow.js
-- ONNX Runtime Web
-- Any JavaScript ML library
-- Custom logic
-
-### 3. External API Mode
-Connect to any external API endpoint.
-
-**Setup:**
-1. In the popup, select "External API" mode
-2. Enter your API endpoint URL
-3. Your API should accept POST requests with:
-   ```json
-   {
-     "text": "Tweet text here"
-   }
-   ```
-4. And return:
-   ```json
-   {
-     "is_sarcasm": true,
-     "confidence": 0.85
-   }
+1. **Cloner le dépôt**
+   ```bash
+   git clone https://github.com/sabri-abdelaaziz/sarcasm_detection_chrome_extension.git
+   cd sarcasm_detection_chrome_extension
    ```
 
-**API Response Formats Supported:**
-- `is_sarcasm` or `sarcasm` or `isSarcasm` or `prediction`
-- `confidence` or `score`
+2. **⚠️ Ajouter le modèle ONNX (REQUIS)**
+   - Placez votre fichier `model.onnx` dans le dossier racine de l'extension
+   - Le fichier doit être nommé exactement `model.onnx`
+   - Assurez-vous que le modèle est compatible avec ONNX Runtime Web
+   - Le modèle doit accepter du texte tokenisé en entrée et retourner une prédiction de sarcasme
 
-## File Structure
+3. **Vérifier le fichier de vocabulaire**
+   - Le fichier `vocab.txt` doit être présent (déjà inclus dans le dépôt)
+   - Ce fichier contient le vocabulaire pour la tokenisation du texte
+
+4. **Charger l'extension dans Chrome**
+   - Ouvrez Chrome et naviguez vers `chrome://extensions/`
+   - Activez le "Mode développeur" (toggle en haut à droite)
+   - Cliquez sur "Charger l'extension non empaquetée"
+   - Sélectionnez le dossier de l'extension
+
+5. **Tester l'extension**
+   - Naviguez vers https://x.com ou https://twitter.com
+   - L'extension détectera automatiquement les tweets et affichera des indicateurs de sarcasme
+   - Cliquez sur l'icône de l'extension pour voir les statistiques
+
+## 🏗️ Architecture du Projet
+
+### Structure des Fichiers
 
 ```
-Chrom_extension/
-├── manifest.json      # Extension configuration
-├── content.js         # Main script that detects tweets
-├── styles.css         # Styling for sarcasm badges
-├── popup.html         # Extension popup UI
-├── popup.js           # Popup functionality
-├── model.js           # Your JavaScript model (create this)
-├── model.js.example   # Example model template
-├── README.md          # This file
-└── icon*.png          # Extension icons (optional)
+sarcasm_detection_chrome_extension/
+├── manifest.json          # Configuration de l'extension Chrome (Manifest V3)
+├── content.js             # Script principal qui détecte et analyse les tweets
+├── model.js               # Logique du modèle ONNX et inférence
+├── model.onnx            # ⚠️ Modèle ML (NON INCLUS - À AJOUTER)
+├── vocab.txt              # Vocabulaire pour la tokenisation
+├── vocab-loader.js        # Chargeur du vocabulaire
+├── ort.min.js            # ONNX Runtime Web library
+├── ort-wasm*.wasm        # WASM binaries pour ONNX Runtime
+├── styles.css             # Styles pour les badges de sarcasme
+├── popup.html             # Interface popup de l'extension
+├── popup.js               # Logique du popup
+├── images/
+│   └── icon.png          # Icône de l'extension
+├── flask_api/            # API Flask alternative (optionnelle)
+│   ├── app.py
+│   ├── requirements.txt
+│   └── README.md
+└── README.md              # Ce fichier
 ```
 
-## How It Works
+## 🔧 Comment ça Marche
 
-1. **Content Script** (`content.js`):
-   - Runs on X.com and Twitter.com pages
-   - Monitors for new tweets using MutationObserver
-   - Extracts tweet text and sends it for detection
-   - Adds visual badges to tweets showing detection results
+### 1. Chargement du Modèle
+- L'extension charge le modèle ONNX au démarrage
+- ONNX Runtime Web est utilisé pour l'inférence dans le navigateur
+- Le vocabulaire est chargé depuis `vocab.txt`
 
-2. **Detection Modes**:
-   - **Static**: Random results for testing
-   - **JS Model**: Loads and runs your JavaScript model
-   - **API**: Sends POST request to your API endpoint
+### 2. Détection des Tweets
+- **Content Script** (`content.js`) s'exécute sur les pages X.com/Twitter.com
+- Utilise `MutationObserver` pour surveiller les nouveaux tweets
+- Extrait le texte des tweets et les envoie au modèle
 
-3. **Visual Indicators**:
-   - 🟠 Orange badge: Sarcasm detected
-   - 🟢 Green badge: Not sarcasm
-   - Shows confidence percentage
+### 3. Analyse du Sarcasme
+- Le texte est tokenisé selon le vocabulaire
+- Le modèle ONNX fait la prédiction
+- Retourne un score de confiance (0-100%)
 
-## Using TensorFlow.js
+### 4. Affichage des Résultats
+- 🟠 **Badge orange** : Sarcasme détecté (≥50% confiance)
+- 🟢 **Badge vert** : Pas de sarcasme (<50% confiance)
+- Affiche le pourcentage de confiance
 
-If you want to use TensorFlow.js:
+## 📋 Exigences du Modèle ONNX
 
-1. Download TensorFlow.js and include it in your extension
-2. Load your trained model:
-```javascript
-window.detectSarcasmModel = async function(text) {
-    const model = await tf.loadLayersModel(chrome.runtime.getURL('model.json'));
-    // Preprocess text
-    const input = preprocessText(text);
-    // Predict
-    const prediction = model.predict(input);
-    const result = await prediction.data();
-    return {
-        isSarcasm: result[0] > 0.5,
-        confidence: Math.abs(result[0] - 0.5) * 2
-    };
-};
-```
+Pour que l'extension fonctionne correctement, votre fichier `model.onnx` doit :
 
-3. Add model files to `web_accessible_resources` in `manifest.json`
+1. **Format d'entrée** :
+   - Accepter des tensors d'entiers (IDs de tokens)
+   - Dimensions : `[batch_size, sequence_length]`
+   - Généralement : `[1, max_seq_length]` pour un tweet
 
-## Using ONNX Runtime
+2. **Format de sortie** :
+   - Retourner un tensor de probabilités
+   - Shape : `[batch_size, num_classes]` ou `[batch_size, 1]`
+   - Valeurs entre 0 et 1 (probabilité de sarcasme)
 
-If you want to use ONNX Runtime:
+3. **Compatibilité** :
+   - Compatible avec ONNX Runtime Web
+   - Opérateurs supportés par la version WASM
+   - Taille raisonnable pour le chargement dans le navigateur
 
-1. Include ONNX Runtime Web in your extension
-2. Load your ONNX model:
-```javascript
-window.detectSarcasmModel = async function(text) {
-    const session = await ort.InferenceSession.create(
-        chrome.runtime.getURL('model.onnx')
-    );
-    const input = preprocessText(text);
-    const results = await session.run(input);
-    return {
-        isSarcasm: results.output.data[0] > 0.5,
-        confidence: Math.abs(results.output.data[0] - 0.5) * 2
-    };
-};
-```
+## 🚀 Utilisation Alternative : API Flask
 
-## Troubleshooting
+Si vous préférez utiliser une API backend au lieu du modèle dans le navigateur :
 
-- **Icons not showing**: Create the icon PNG files or remove icon references from manifest.json
-- **Extension not working**: Check that you're on x.com or twitter.com
-- **Badges not appearing**: Open browser console (F12) to check for errors
-- **JS Model not loading**: Check the file path and ensure the function is named `window.detectSarcasmModel`
-- **API not connecting**: Check CORS settings and API URL
+1. Naviguez vers le dossier `flask_api/`
+2. Consultez le README dans ce dossier pour les instructions d'installation
+3. Lancez l'API Flask
+4. Modifiez `content.js` pour pointer vers votre endpoint API
 
-## Development
+## 🧪 Développement et Tests
 
-### Testing Static Mode
-- Works immediately after installation
-- No configuration required
-- Results are randomized for demonstration
+## 🧪 Développement et Tests
 
-### Testing JavaScript Model
-1. Copy `model.js.example` to `model.js`
-2. Implement your model function
-3. Switch to "JavaScript Model" mode in popup
-4. Test on X.com
+### Prérequis de Développement
+- Google Chrome ou Chromium
+- Fichier `model.onnx` (votre modèle ML entraîné)
+- Connaissance de base en JavaScript et ML
 
-### Testing External API
-1. Set up your API endpoint
-2. Switch to "External API" mode
-3. Enter your API URL
-4. Test on X.com
+### Tests
+1. Chargez l'extension en mode développeur
+2. Ouvrez la console Chrome (F12) pour voir les logs
+3. Naviguez vers X.com
+4. Vérifiez que les badges apparaissent sur les tweets
 
-## License
+### Debugging
+- Ouvrez la console pour voir les logs de l'extension
+- Vérifiez que `model.onnx` est bien chargé
+- Consultez les erreurs ONNX Runtime si le modèle ne charge pas
 
-MIT License - Feel free to modify and use as needed.
+## 🔧 Dépannage
+
+| Problème | Solution |
+|----------|----------|
+| **Le modèle ne charge pas** | Vérifiez que `model.onnx` est présent et compatible avec ONNX Runtime Web |
+| **Badges non visibles** | Ouvrez la console (F12) pour voir les erreurs, vérifiez que vous êtes sur x.com ou twitter.com |
+| **Erreur WASM** | Assurez-vous que les fichiers `.wasm` sont présents dans le dossier |
+| **Vocabulaire non trouvé** | Vérifiez la présence de `vocab.txt` |
+| **Prédictions incorrectes** | Le modèle nécessite peut-être un réentraînement ou un ajustement |
+
+## 📝 Notes Importantes
+
+- ⚠️ Le fichier `model.onnx` doit être ajouté manuellement (non inclus dans le dépôt Git)
+- 📦 Les fichiers WASM pour ONNX Runtime sont inclus et nécessaires
+- 🔒 L'extension nécessite les permissions pour x.com et twitter.com
+- 🚀 Le modèle s'exécute entièrement côté client (pas de serveur requis)
+
+## 🤝 Contribution
+
+Les contributions sont les bienvenues ! N'hésitez pas à :
+- Signaler des bugs
+- Proposer des améliorations
+- Soumettre des pull requests
+
+## 📄 Licence
+
+MIT License - Libre d'utilisation et de modification.
+
+## 👨‍💻 Auteur
+
+Développé par Sabri Abdelaaziz
+
+---
+
+**Note** : N'oubliez pas d'ajouter votre fichier `model.onnx` avant de charger l'extension !
